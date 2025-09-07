@@ -17,7 +17,7 @@ locals {
 }
 
 # -------------------------
-# NEW: Generate & persist SSH keypair when requested
+# Generate & persist SSH keypair when requested
 # -------------------------
 resource "tls_private_key" "generated" {
   count     = var.generate_key_pair ? 1 : 0
@@ -39,7 +39,6 @@ resource "local_file" "public_key" {
   file_permission = "0644"
 }
 
-# Choose the right public key to inject into the VM
 locals {
   public_key_to_use = var.generate_key_pair ? tls_private_key.generated[0].public_key_openssh : var.ssh_public_key
 }
@@ -139,7 +138,7 @@ resource "azurerm_application_insights" "appi" {
 }
 
 # -------------------------
-# Linux VM (Ubuntu) + cloud-init
+# Linux VM (Ubuntu) + cloud-init (stress-ng)
 # -------------------------
 locals {
   cloud_init = <<-CLOUD
@@ -160,7 +159,6 @@ resource "azurerm_linux_virtual_machine" "vm" {
   admin_username      = var.admin_username
   network_interface_ids = [azurerm_network_interface.nic.id]
 
-  # Use generated key (or BYO key if generate_key_pair=false)
   admin_ssh_key {
     username   = var.admin_username
     public_key = local.public_key_to_use
@@ -184,15 +182,17 @@ resource "azurerm_linux_virtual_machine" "vm" {
 }
 
 # -------------------------
-# Azure Monitor Agent (VM extension)
+# Azure Monitor Agent (VM extension) — auto-pick version
 # -------------------------
 resource "azurerm_virtual_machine_extension" "ama" {
   name                       = "AzureMonitorLinuxAgent"
   virtual_machine_id         = azurerm_linux_virtual_machine.vm.id
   publisher                  = "Microsoft.Azure.Monitor"
   type                       = "AzureMonitorLinuxAgent"
-  type_handler_version       = "1.0"
-  automatic_upgrade_enabled  = true
+
+  # Let Azure select a compatible version for region/CPU arch
+  auto_upgrade_minor_version = true
+
   settings                   = jsonencode({})
   tags                       = local.tags
 }
@@ -247,7 +247,7 @@ resource "azurerm_monitor_data_collection_rule_association" "dcr_assoc" {
 }
 
 # -------------------------
-# Activity Log → LAW (subscription-level diagnostic setting)
+# Activity Log → LAW (subscription diagnostic setting)
 # -------------------------
 resource "azurerm_monitor_diagnostic_setting" "activity" {
   name                       = "${local.name}-activitylogs"
@@ -262,10 +262,7 @@ resource "azurerm_monitor_diagnostic_setting" "activity" {
   enabled_log { category = "Policy" }
   enabled_log { category = "Autoscale" }
 
-  # Deprecated 'metric' replaced with 'enabled_metric'
-  enabled_metric {
-    category = "AllMetrics"
-  }
+  enabled_metric { category = "AllMetrics" }
 }
 
 # -------------------------

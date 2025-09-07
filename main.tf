@@ -11,9 +11,37 @@ resource "random_integer" "rand" {
 }
 
 locals {
-  name     = "${var.prefix}-${random_integer.rand.result}"
-  tags     = { project = "azure-monitor-basic", owner = "cloudnautic" }
-  vm_size  = "Standard_B2s"
+  name    = "${var.prefix}-${random_integer.rand.result}"
+  tags    = { project = "azure-monitor-basic", owner = "cloudnautic" }
+  vm_size = "Standard_B2s"
+}
+
+# -------------------------
+# NEW: Generate & persist SSH keypair when requested
+# -------------------------
+resource "tls_private_key" "generated" {
+  count     = var.generate_key_pair ? 1 : 0
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "local_sensitive_file" "private_key" {
+  count           = var.generate_key_pair ? 1 : 0
+  filename        = "${path.module}/keys/${var.key_name}"
+  content         = tls_private_key.generated[0].private_key_pem
+  file_permission = "0600"
+}
+
+resource "local_file" "public_key" {
+  count           = var.generate_key_pair ? 1 : 0
+  filename        = "${path.module}/keys/${var.key_name}.pub"
+  content         = tls_private_key.generated[0].public_key_openssh
+  file_permission = "0644"
+}
+
+# Choose the right public key to inject into the VM
+locals {
+  public_key_to_use = var.generate_key_pair ? tls_private_key.generated[0].public_key_openssh : var.ssh_public_key
 }
 
 # -------------------------
@@ -132,9 +160,10 @@ resource "azurerm_linux_virtual_machine" "vm" {
   admin_username      = var.admin_username
   network_interface_ids = [azurerm_network_interface.nic.id]
 
+  # Use generated key (or BYO key if generate_key_pair=false)
   admin_ssh_key {
     username   = var.admin_username
-    public_key = var.ssh_public_key
+    public_key = local.public_key_to_use
   }
 
   os_disk {
@@ -175,6 +204,7 @@ resource "azurerm_monitor_data_collection_rule" "dcr" {
   name                = "${local.name}-dcr"
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
+
   destinations {
     log_analytics {
       name                  = "toLaw"
@@ -224,28 +254,16 @@ resource "azurerm_monitor_diagnostic_setting" "activity" {
   target_resource_id         = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
   log_analytics_workspace_id = azurerm_log_analytics_workspace.law.id
 
-  enabled_log {
-    category = "Administrative"
-  }
-  enabled_log {
-    category = "Security"
-  }
-  enabled_log {
-    category = "ServiceHealth"
-  }
-  enabled_log {
-    category = "Alert"
-  }
-  enabled_log {
-    category = "Recommendation"
-  }
-  enabled_log {
-    category = "Policy"
-  }
-  enabled_log {
-    category = "Autoscale"
-  }
-  metric {
+  enabled_log { category = "Administrative" }
+  enabled_log { category = "Security" }
+  enabled_log { category = "ServiceHealth" }
+  enabled_log { category = "Alert" }
+  enabled_log { category = "Recommendation" }
+  enabled_log { category = "Policy" }
+  enabled_log { category = "Autoscale" }
+
+  # Deprecated 'metric' replaced with 'enabled_metric'
+  enabled_metric {
     category = "AllMetrics"
   }
 }

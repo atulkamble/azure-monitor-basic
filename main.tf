@@ -191,7 +191,7 @@ resource "azurerm_virtual_machine_extension" "ama" {
   type               = "AzureMonitorLinuxAgent"
 
   # Required on azurerm v4.x
-  type_handler_version       = "1.36.1"     # change if your region lacks this build
+  type_handler_version       = "1.36"     # change if your region lacks this build
   auto_upgrade_minor_version = true
   automatic_upgrade_enabled  = true
 

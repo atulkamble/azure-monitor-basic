@@ -146,7 +146,7 @@ locals {
     #cloud-config
     package_update: true
     packages:
-      - stress-ng
+      - stress
     runcmd:
       - echo "Azure Monitor basic demo ready" > /etc/motd
   CLOUD
@@ -289,7 +289,7 @@ resource "azurerm_monitor_metric_alert" "vm_cpu_high" {
   name                = "${local.name}-cpu-alert"
   resource_group_name = azurerm_resource_group.rg.name
   scopes              = [azurerm_linux_virtual_machine.vm.id]
-  description         = "Alert when VM CPU > 70% for 5 minutes"
+  description         = "Alert when VM CPU > 30% for 1 minute"
   severity            = 2
   auto_mitigate       = true
   frequency           = "PT1M"
@@ -302,7 +302,7 @@ resource "azurerm_monitor_metric_alert" "vm_cpu_high" {
     metric_name      = "Percentage CPU"
     aggregation      = "Average"
     operator         = "GreaterThan"
-    threshold        = 70
+    threshold        = 30
   }
 
   action {

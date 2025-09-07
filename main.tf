@@ -73,7 +73,7 @@ resource "azurerm_subnet" "subnet" {
 resource "azurerm_public_ip" "pip" {
   name                = "${local.name}-pip"
   resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
+  location            = var.location
   allocation_method   = "Static"
   sku                 = "Standard"
   tags                = local.tags
@@ -82,7 +82,7 @@ resource "azurerm_public_ip" "pip" {
 resource "azurerm_network_security_group" "nsg" {
   name                = "${local.name}-nsg"
   resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
+  location            = var.location
   tags                = local.tags
 
   security_rule {
@@ -101,7 +101,7 @@ resource "azurerm_network_security_group" "nsg" {
 resource "azurerm_network_interface" "nic" {
   name                = "${local.name}-nic"
   resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
+  location            = var.location
   ip_configuration {
     name                          = "ipconfig1"
     subnet_id                     = azurerm_subnet.subnet.id
@@ -122,7 +122,7 @@ resource "azurerm_network_interface_security_group_association" "nsg_assoc" {
 resource "azurerm_log_analytics_workspace" "law" {
   name                = "${local.name}-law"
   resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
+  location            = var.location
   sku                 = "PerGB2018"
   retention_in_days   = 30
   tags                = local.tags
@@ -131,7 +131,7 @@ resource "azurerm_log_analytics_workspace" "law" {
 resource "azurerm_application_insights" "appi" {
   name                = "${local.name}-appi"
   resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
+  location            = var.location
   application_type    = "web"
   workspace_id        = azurerm_log_analytics_workspace.law.id
   tags                = local.tags
@@ -145,7 +145,7 @@ locals {
     #cloud-config
     package_update: true
     packages:
-      - stress
+      - stress-ng
     runcmd:
       - echo "Azure Monitor basic demo ready" > /etc/motd
   CLOUD
@@ -154,7 +154,7 @@ locals {
 resource "azurerm_linux_virtual_machine" "vm" {
   name                = "${local.name}-vm"
   resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
+  location            = var.location
   size                = local.vm_size
   admin_username      = var.admin_username
   network_interface_ids = [azurerm_network_interface.nic.id]
@@ -182,19 +182,21 @@ resource "azurerm_linux_virtual_machine" "vm" {
 }
 
 # -------------------------
-# Azure Monitor Agent (VM extension) — auto-pick version
+# Azure Monitor Agent (VM extension) — version pinned for AzureRM v4.x
 # -------------------------
 resource "azurerm_virtual_machine_extension" "ama" {
-  name                       = "AzureMonitorLinuxAgent"
-  virtual_machine_id         = azurerm_linux_virtual_machine.vm.id
-  publisher                  = "Microsoft.Azure.Monitor"
-  type                       = "AzureMonitorLinuxAgent"
+  name               = "AzureMonitorLinuxAgent"
+  virtual_machine_id = azurerm_linux_virtual_machine.vm.id
+  publisher          = "Microsoft.Azure.Monitor"
+  type               = "AzureMonitorLinuxAgent"
 
-  # Let Azure select a compatible version for region/CPU arch
+  # Required on azurerm v4.x
+  type_handler_version       = "1.36.1"     # change if your region lacks this build
   auto_upgrade_minor_version = true
+  automatic_upgrade_enabled  = true
 
-  settings                   = jsonencode({})
-  tags                       = local.tags
+  settings = jsonencode({})
+  tags     = local.tags
 }
 
 # -------------------------
@@ -203,7 +205,7 @@ resource "azurerm_virtual_machine_extension" "ama" {
 resource "azurerm_monitor_data_collection_rule" "dcr" {
   name                = "${local.name}-dcr"
   resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
+  location            = var.location
 
   destinations {
     log_analytics {
